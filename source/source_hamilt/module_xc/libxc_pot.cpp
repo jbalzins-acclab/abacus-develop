@@ -12,6 +12,7 @@
 
 #include <xc.h>
 
+#include <cmath>
 #include <vector>
 #include <complex>
 
@@ -500,7 +501,7 @@ std::tuple<double,double,ModuleBase::matrix,ModuleBase::matrix> XC_Functional_Li
         /* hybrid_alpha = */ hybrid_alpha,
         /* hse_omega = */ hse_omega);
 
-    const std::vector<double> rho = XC_Functional_Libxc::convert_rho(nspin, nrxx, chr);
+    std::vector<double> rho = XC_Functional_Libxc::convert_rho(nspin, nrxx, chr);
     const bool need_laplacian = XC_Functional::get_need_laplacian();
     std::vector<std::vector<ModuleBase::Vector3<double>>> gdr;
     std::vector<double> lapl;
@@ -527,9 +528,14 @@ std::tuple<double,double,ModuleBase::matrix,ModuleBase::matrix> XC_Functional_Li
     std::vector<double> vtau   ( nrxx * nspin            );
     std::vector<double> vlapl  ( nrxx * nspin            );
 
-    constexpr double rho_th  = 1e-8;
-    constexpr double grho_th = 1e-12;
-    constexpr double tau_th  = 1e-8;
+    // Numerical thresholds for vacuum/low-density regions in meta-GGA evaluation.
+    // Clamping small negative densities and kinetic energy densities avoids unphysical
+    // numerical divergences or NaN/Inf from LibXC when evaluating meta-GGA expressions
+    // such as the dimensionless iso-orbital parameter alpha = (tau - tau_vonWeizsacker)/tau_TF
+    // on FFT real-space grids.
+    constexpr double rho_th  = 1e-11;
+    constexpr double grho_th = 1e-14;
+    constexpr double tau_th  = 1e-11;
     // sgn for threshold mask
     std::vector<double> sgn( nrxx * nspin);
 #ifdef _OPENMP
@@ -551,6 +557,9 @@ std::tuple<double,double,ModuleBase::matrix,ModuleBase::matrix> XC_Functional_Li
             {
                 sgn[ir] = 0.0;
             }
+            // Clamp negative FFT ringing artifacts in vacuum grid points
+            if (rho[ir] < 0.0) { rho[ir] = 0.0; }
+            if (kin_r[ir] < 0.0) { kin_r[ir] = 0.0; }
         }
     }
     else
@@ -564,12 +573,19 @@ std::tuple<double,double,ModuleBase::matrix,ModuleBase::matrix> XC_Functional_Li
                 { sgn[ir*2] = 0.0; }
             if ( rho[ir*2+1]<rho_th || sqrt(std::abs(sigma[ir*3+2]))<grho_th || std::abs(kin_r[ir*2+1])<tau_th)
                 { sgn[ir*2+1] = 0.0; }
+            // Clamp negative FFT ringing artifacts in vacuum grid points
+            if (rho[ir*2] < 0.0) { rho[ir*2] = 0.0; }
+            if (rho[ir*2+1] < 0.0) { rho[ir*2+1] = 0.0; }
+            if (kin_r[ir*2] < 0.0) { kin_r[ir*2] = 0.0; }
+            if (kin_r[ir*2+1] < 0.0) { kin_r[ir*2+1] = 0.0; }
         }
     }
 
     for ( xc_func_type &func : funcs )
     {
         assert(func.info->family == XC_FAMILY_MGGA);
+        // Explicitly set LibXC internal density threshold to match ABACUS vacuum cutoffs
+        xc_func_set_dens_threshold(&func, rho_th);
 
         ModuleBase::timer::start("Libxc","xc_mgga_exc_vxc");
         constexpr int nr_batch_size = 1024;
@@ -594,6 +610,40 @@ std::tuple<double,double,ModuleBase::matrix,ModuleBase::matrix> XC_Functional_Li
                 vtau.data() + ir_start * nspin);
         }
         ModuleBase::timer::end("Libxc","xc_mgga_exc_vxc");
+
+        // Post-processing sanitization for meta-GGA potentials:
+        // Zero out unphysical singular potentials or NaN/Inf values in vacuum regions
+        // where density is below threshold (sgn == 0) to ensure numerical stability during FFT.
+        const int nsigma = (1 == nspin) ? 1 : 3;
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static, 1024)
+#endif
+        for( int ir = 0; ir < nrxx; ++ir )
+        {
+            if (std::isnan(exc[ir]) || std::isinf(exc[ir])) { exc[ir] = 0.0; }
+            for( int is = 0; is < nspin; ++is )
+            {
+                if (sgn[ir * nspin + is] == 0.0 || std::isnan(vrho[ir * nspin + is]) || std::isinf(vrho[ir * nspin + is]))
+                {
+                    vrho[ir * nspin + is] = 0.0;
+                }
+                if (sgn[ir * nspin + is] == 0.0 || std::isnan(vtau[ir * nspin + is]) || std::isinf(vtau[ir * nspin + is]))
+                {
+                    vtau[ir * nspin + is] = 0.0;
+                }
+                if (sgn[ir * nspin + is] == 0.0 || std::isnan(vlapl[ir * nspin + is]) || std::isinf(vlapl[ir * nspin + is]))
+                {
+                    vlapl[ir * nspin + is] = 0.0;
+                }
+            }
+            for( int isig = 0; isig < nsigma; ++isig )
+            {
+                if (std::isnan(vsigma[ir * nsigma + isig]) || std::isinf(vsigma[ir * nsigma + isig]))
+                {
+                    vsigma[ir * nsigma + isig] = 0.0;
+                }
+            }
+        }
 
         //process etxc
         for( int is=0; is!=nspin; ++is )
