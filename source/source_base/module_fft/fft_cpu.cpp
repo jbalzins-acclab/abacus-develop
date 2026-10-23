@@ -515,6 +515,21 @@ FFT_CPU<double>::get_auxr_data()   const {return z_auxr;}
 template <> std::complex<double>* 
 FFT_CPU<double>::get_auxg_data()   const {return z_auxg;}
 
+#if (defined(_WIN32) || defined(__APPLE__)) && !defined(__FLOAT_FFTW)
+template <> void FFT_CPU<float>::setupFFT() {}
+template <> void FFT_CPU<float>::cleanFFT() {}
+template <> void FFT_CPU<float>::clear() {}
+template <> void FFT_CPU<float>::fftxyfor(std::complex<float>*, std::complex<float>*) const {}
+template <> void FFT_CPU<float>::fftxybac(std::complex<float>*, std::complex<float>*) const {}
+template <> void FFT_CPU<float>::fftzfor(std::complex<float>*, std::complex<float>*) const {}
+template <> void FFT_CPU<float>::fftzbac(std::complex<float>*, std::complex<float>*) const {}
+template <> void FFT_CPU<float>::fftxyr2c(float*, std::complex<float>*) const {}
+template <> void FFT_CPU<float>::fftxyc2r(std::complex<float>*, float*) const {}
+template <> float* FFT_CPU<float>::get_rspace_data() const { return nullptr; }
+template <> std::complex<float>* FFT_CPU<float>::get_auxr_data() const { return nullptr; }
+template <> std::complex<float>* FFT_CPU<float>::get_auxg_data() const { return nullptr; }
+#endif
+
 template FFT_CPU<float>::FFT_CPU();
 template FFT_CPU<float>::~FFT_CPU();
 template FFT_CPU<double>::FFT_CPU();

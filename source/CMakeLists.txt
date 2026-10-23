@@ -215,7 +215,16 @@ else()
   endif()
 
   if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    list(APPEND _abacus_linalg_libs gfortran)
+    find_library(
+      GFORTRAN_LIBRARY
+      NAMES gfortran
+      HINTS /opt/homebrew/opt/gcc/lib/gcc/current
+            /usr/local/opt/gcc/lib/gcc/current)
+    if(GFORTRAN_LIBRARY)
+      list(APPEND _abacus_linalg_libs ${GFORTRAN_LIBRARY})
+    else()
+      list(APPEND _abacus_linalg_libs gfortran)
+    endif()
   elseif(CMAKE_CXX_COMPILER_ID MATCHES Intel)
     list(APPEND _abacus_linalg_libs ifcore)
   endif()
