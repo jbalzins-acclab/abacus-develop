@@ -553,7 +553,10 @@ std::tuple<double,double,ModuleBase::matrix,ModuleBase::matrix> XC_Functional_Li
 #endif
         for( int ir=0; ir<nrxx; ++ir )
         {
-            if ( rho[ir]<rho_th || sqrt(std::abs(sigma[ir]))<grho_th || std::abs(kin_r[ir])<tau_th)
+            // Do NOT zero sgn[ir] when sigma -> 0: at atomic nuclei and high-symmetry
+            // crystal points, grad(rho) = 0 by symmetry while rho and tau are large.
+            // Zeroing sgn[ir] on small sigma deletes exc/vrho/vtau at the nuclei!
+            if ( rho[ir]<rho_th || std::abs(kin_r[ir])<tau_th )
             {
                 sgn[ir] = 0.0;
             }
@@ -569,9 +572,9 @@ std::tuple<double,double,ModuleBase::matrix,ModuleBase::matrix> XC_Functional_Li
 #endif
         for( int ir=0; ir<nrxx; ++ir )
         {
-            if ( rho[ir*2]<rho_th || sqrt(std::abs(sigma[ir*3]))<grho_th || std::abs(kin_r[ir*2])<tau_th)
+            if ( rho[ir*2]<rho_th || std::abs(kin_r[ir*2])<tau_th )
                 { sgn[ir*2] = 0.0; }
-            if ( rho[ir*2+1]<rho_th || sqrt(std::abs(sigma[ir*3+2]))<grho_th || std::abs(kin_r[ir*2+1])<tau_th)
+            if ( rho[ir*2+1]<rho_th || std::abs(kin_r[ir*2+1])<tau_th )
                 { sgn[ir*2+1] = 0.0; }
             // Clamp negative FFT ringing artifacts in vacuum grid points
             if (rho[ir*2] < 0.0) { rho[ir*2] = 0.0; }
