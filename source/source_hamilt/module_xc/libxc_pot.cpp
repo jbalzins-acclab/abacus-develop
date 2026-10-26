@@ -639,9 +639,13 @@ std::tuple<double,double,ModuleBase::matrix,ModuleBase::matrix> XC_Functional_Li
                     vlapl[ir * nspin + is] = 0.0;
                 }
             }
+            const double rho_tot_ir = (1 == nspin) ? rho[ir] : (rho[ir * 2] + rho[ir * 2 + 1]);
             for( int isig = 0; isig < nsigma; ++isig )
             {
-                if (std::isnan(vsigma[ir * nsigma + isig]) || std::isinf(vsigma[ir * nsigma + isig]))
+                if (rho_tot_ir < 1e-6
+                    || sqrt(std::abs(sigma[ir * nsigma + isig])) < grho_th
+                    || std::isnan(vsigma[ir * nsigma + isig])
+                    || std::isinf(vsigma[ir * nsigma + isig]))
                 {
                     vsigma[ir * nsigma + isig] = 0.0;
                 }
